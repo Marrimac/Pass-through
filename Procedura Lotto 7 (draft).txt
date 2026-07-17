@@ -1,0 +1,57 @@
+No, comincio subito con la struttura, così la controlli senza rileggerti roba che già sai.
+
+**1. Stato del Magazzino PRIMA del Lotto 7** DB con 49 tabelle fisiche montate dai lotti 1-6. Nessuna distinzione tra riga-dato e riga-non-dato: chi scrive una query normale (es. somma per regione) prende trappole senza saperlo.
+
+**2. Le anomalie presenti, e perché esistono** Tre famiglie, ciascuna con l'esempio numerico:
+- **Aggregati doppi [F7]**: codici come ITDA/ITDA/ITFG sommano già le loro parti -- sommarli di nuovo raddoppia (Σ regioni 2024 = Italia +1.082.702)
+- **Doppioni da fusione [F3]**: comuni nati da fusione compaiono accanto ai predecessori in alcuni anni (+6.983/+838/+218 su 2019/20/22 in stranieri)
+- **Zeri-non-dato [F13]**: 72 righe con valore 0 che in realtà significano "comune non esistente quell'anno", non "zero persone"
+
+**3. Cosa fa il Lotto 7, passo-passo**
+
+- Fase 1: inversione dei nomi -- ogni tabella diventa `_nuda`, il nome pulito resta libero
+- Fase 2: costruisce i 4 registri (righe_non_dato derivate automaticamente dalle 3 anomalie sopra, lacune_note, binari_temporali, avvertenze)
+- Fase 3: crea le viste col nome originale, che escludono le righe segnalate nel registro
+- Fase 4: 13 prove automatiche -- verificano che la trappola esista ancora sulla `_nuda` e sia sparita sulla vista
+
+**4. Stato DOPO il Lotto 7** Chi scrive la query normale sul nome pulito ottiene il risultato corretto senza sapere nulla delle anomalie. Chi vuole diagnosticare può interrogare i registri o le `_nuda`.
+
+Ti torna? Modifico prima di scrivere una riga del Word.
+
+
+Merry:
+
+Devi anche specificare alcune cose:
+
+1. quali sono le tabelle che sono affette da uno o tutti e tre quei problemi
+
+2. se la Fase 7 è generica per quei 3 problemi o agisce solo se un set di dati è stato precedentemente identificato come uno di quelli affetti dal problema e quindi
+
+3. cosa deve fare chi deciderà di aggiungere altri dati in futuro al Magazzino.
+
+Quali sono le risposte a queste domande?
+
+
+Ecco le tre risposte, verificate sul DB reale -- non a memoria:
+
+**1) Quali tabelle sono affette**
+
+|  Problema |  Tabelle |  Righe |  
+| ---- | ---- | ----  |
+|  Aggregati doppi [F7] |  flussi, migrazioni_italiani, nascite, nascite_paese, popolazione, stranieri |  16 |  
+|  Doppioni da fusione [F3] |  bilancio_stranieri, flussi, matrimoni_rito, stranieri |  62 |  
+|  Zeri-non-dato [F13] |  cittadinanza_stranieri, eta_popolazione, famiglie_nucleo, famiglie_nucleo_agg, generazioni, generazioni_eta, istruzione_comune, istruzione_stranieri, lavoro_stranieri, matrimoni_rito, naturalizzati_nati_estero, naturalizzati_nati_italia, popolazione, stranieri_nati_estero, stranieri_paese |  100 | 
+
+Con **2 problemi insieme**: flussi, stranieri (aggregato+fusione), popolazione (aggregato+zero), matrimoni_rito (fusione+zero). Nessuna tabella ha tutti e 3. **21 tabelle su 49 toccate**, 28 pulite di partenza.
+
+**2) Generico o pre-identificato?**
+
+**Generico -- nessuna tabella è "pre-marcata".** Il motore calcola da solo, ogni volta: quali codici sono aggregati (dal ponte territoriale), quali coppie codice+anno sono doppioni da fusione (per differenza stranieri↔popolazione), quali coppie codice+anno sono zeri-non-dato (dagli zeri di popolazione). Poi **scandisce tutte le 49 tabelle** e verifica, per ciascuna, se quei codici/anni compaiono davvero nei suoi dati. Se sì, la marca; se no, la lascia pulita. Nessun elenco scritto a mano -- è per questo che il motore lo classifico come "invariante": funziona identico anche se domani arriva una tabella 50ª mai vista.
+
+**3) Chi aggiunge dati in futuro deve fare cosa**
+
+Solo una cosa **obbligatoria** e distinta dai 3 problemi sopra: **dichiarare il binario temporale** della nuova tabella nel seme (`binari_temporali_seme.csv`) -- stock al 1° gennaio, flusso, tavola, o misto. Se non lo fa, `build_difese.py` va in ROSSO e si rifiuta di procedere (è l'unico controllo non automatico: il binario non si può dedurre da solo, va dichiarato o accertato alla fonte).
+
+I tre problemi F7/F3/F13 invece **non richiedono nulla**: il motore li scopre da sé al primo rilancio dopo il montaggio. L'unica azione umana è quella del binario.
+
+Questo risponde? Aggiorno la struttura del documento con questi tre blocchi come da tuo punto 1/2/3, o vuoi che aggiusti qualcosa prima?
